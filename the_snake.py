@@ -42,7 +42,7 @@ MIN_SPEED = 5
 MAX_SPEED = 30
 
 # Минимальное и максимальное количество камней
-MIN_STONES = 1
+MIN_STONES = 4
 MAX_STONES = 8
 
 # Настройка игрового окна:
@@ -131,6 +131,19 @@ class Stone(GameObject):
             randint(0, GRID_HEIGHT - 1) * GRID_SIZE,
         )
 
+    def place_free(self, snake, apple, lemon, stones):
+        """Ставит камень в свободную клетку поля."""
+        self.randomize_position()
+        while is_occupied(
+            self.position,
+            snake,
+            apple,
+            lemon,
+            stones,
+            exclude=self
+        ):
+            self.randomize_position()
+
     def draw(self):
         """Отрисовывает камень размеров в одну клетку."""
         rect = pygame.Rect(self.position, (GRID_SIZE, GRID_SIZE))
@@ -199,7 +212,7 @@ class Snake(GameObject):
     def draw(self):
         """Отрисовывает змейку и затирает след последнего сегмента."""
         for position in self.positions[:-1]:
-            rect = (pygame.Rect(position, (GRID_SIZE, GRID_SIZE)))
+            rect = pygame.Rect(position, (GRID_SIZE, GRID_SIZE))
             pygame.draw.rect(screen, self.body_color, rect)
             pygame.draw.rect(screen, BORDER_COLOR, rect, 1)
 
@@ -231,6 +244,31 @@ def handle_keys(game_object):
                 game_object.next_direction = RIGHT
 
 
+def eat_apple(apple, snake, lemon, stones, speed):
+    """Обрабатывает поедание яблока, возвращает новую скорость."""
+    snake.length += 1
+    speed = min(speed + 1, MAX_SPEED)
+    while is_occupied(
+            apple.position, snake, apple, lemon, stones, exclude=apple):
+        apple.randomize_position()
+    for stone in stones:
+        stone.place_free(snake, apple, lemon, stones)
+    return speed
+
+
+def eat_lemon(lemon, snake, apple, stones, speed):
+    """Обрабатывает поедание лимона, возвращает новую скорость."""
+    if snake.length > 1:
+        snake.shrink()
+        speed = max(speed - 1, MIN_SPEED)
+    while is_occupied(
+            lemon.position, snake, apple, lemon, stones, exclude=lemon):
+        lemon.randomize_position()
+    for stone in stones:
+        stone.place_free(snake, apple, lemon, stones)
+    return speed
+
+
 def is_occupied(
         position,
         snake,
@@ -253,7 +291,7 @@ def create_stones(
         snake,
         apple,
         lemon
-        ):
+):
     """Создаёт случайное количество камней в свободных клетках."""
     count = randint(MIN_STONES, MAX_STONES)
     stones = [Stone() for _ in range(count)]
@@ -296,68 +334,31 @@ def main():
 
         # Тут опишите основную логику игры.
         # Если столкнулись с камнем, сбрасываем игру.
-        if snake.get_head_position() in [stone.position for stone in stones]:
+        if any(
+            snake.get_head_position() == stone.position for stone in stones
+        ):
             snake.reset()
             stones = create_stones(snake, apple, lemon)
             SPEED = initial_speed
 
         # Если съедаем яблоко, увеличиваем змейку, и появляется новое яблоко.
         if snake.get_head_position() == apple.position:
-            snake.length += 1
-            SPEED = min(SPEED + 1, MAX_SPEED)
-            while is_occupied(
-                apple.position,
-                snake,
-                apple,
-                lemon,
-                stones,
-                exclude=apple
-            ):
-                apple.randomize_position()
+            SPEED = eat_apple(apple, snake, lemon, stones, SPEED)
             # Каждый раз при поедании яблока камни перемещается.
             for stone in stones:
-                stone.randomize_position()
-                while is_occupied(
-                    stone.position,
-                    snake,
-                    apple,
-                    lemon,
-                    stones,
-                    exclude=stone
-                ):
-                    stone.randomize_position()
+                stone.place_free(snake, apple, lemon, stones)
 
         # Если съедаем лимон, уменьшаем змейку, и появляется новый лимон.
         if snake.get_head_position() == lemon.position:
-            if snake.length > 1:
-                snake.shrink()
-                SPEED = max(SPEED - 1, MIN_SPEED)
-            while is_occupied(
-                lemon.position,
-                snake,
-                apple,
-                lemon,
-                stones,
-                exclude=lemon
-            ):
-                lemon.randomize_position()
-                # Каждый раз при поедании лимона камни перемещается.
+            SPEED = eat_lemon(lemon, snake, apple, stones, SPEED)
+            # Каждый раз при поедании лимона камни перемещается.
             for stone in stones:
-                stone.randomize_position()
-                while is_occupied(
-                    stone.position,
-                    snake,
-                    apple,
-                    lemon,
-                    stones,
-                    exclude=stone
-                ):
-                    stone.randomize_position()
+                stone.place_free(snake, apple, lemon, stones)
 
         # Если столкнулись с собственным телом, сбрасываем игру.
         if snake.get_head_position() in snake.positions[1:]:
             snake.reset()
-            screen.fill(BOARD_BACKGROUND_COLOR)
+            stones = create_stones(snake, apple, lemon)
             SPEED = initial_speed
 
         screen.fill(BOARD_BACKGROUND_COLOR)
